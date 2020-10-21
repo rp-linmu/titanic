@@ -1,0 +1,113 @@
+
+import numpy as np
+import pandas as pd
+data = pd.read_csv('./Titanic.csv')      #读取文件
+
+X = data[['Survived', 'Pclass', 'Sex', 'Age', 'SibSp',
+       'Parch', 'Fare', 'Embarked']]             #读取特征，设置参数
+#X.head()
+
+X.Embarked.unique()         #查看embarked列的取值
+# 添加列之前copy一下,不然有警告
+#X=X.copy()
+
+X.loc[:,'Embarked_S']=(X.Embarked=='S').astype('int')
+X.loc[:,'Embarked_C']=(X.Embarked=='C').astype('int')
+X.loc[:,'Embarked_Q']=(X.Embarked=='Q').astype('int')   #添加one-hot编码，三维数据添加三列特征
+X.head()
+# 删除原始的Embarked列
+del X['Embarked']
+X.head()
+
+
+X=pd.get_dummies(X)         #sex列进行one-hot编码，采用pd.get_dummies函数，将传入的dataframe的非数值列进行one-hot编码
+X.head()
+
+X['Age'] = X.Age.fillna(X.Age.mean())       #处理AGE的缺失值，用均值填充
+X.info()
+
+X.loc[:,'P1'] = (X.Pclass==1).astype('int')
+X.loc[:,'P2'] = (X.Pclass==2).astype('int')
+X.loc[:,'P3'] = (X.Pclass==3).astype('int')       #Pclass进行one-hot编码
+del X['Pclass']
+X.head()
+
+y = data.Survived
+del X['Survived']
+X.head()
+X.shape, y.shape
+
+#建立模型
+m = len(X)  #训练样本数量
+b = np.ones(m)
+X = np.insert(np.array(X),0,b,axis=1) #初始化
+n = len(X[0])
+
+def fun(theta):
+    return -1/m*np.sum([y[i]*np.log(1/(1+np.e**(-X[i]@theta)))+(1-y[i])*np.log(1-1/(1+np.e**(-X[i]@theta))) for i in range(m)])
+
+def gfun(theta):
+    return -1/m*np.sum([(y[i]-1/(1+np.e**(-X[i]@theta)))*X[i].reshape(-1,1) for i in range(m)],axis=0)
+
+#非精确线搜索
+def Armijo(xk,dk):
+    beta=0.5;sigma=0.2;m=0;maxm=20;mk=0;
+    while m<maxm:
+        if fun(xk+beta**m*dk)<=fun(xk)+sigma*beta**m*gfun(xk).T@dk:
+            mk=m
+            break
+        m +=1
+    newxk=xk+beta**mk*dk
+    return newxk,mk
+
+theta = np.ones(n).reshape(-1,1)
+epsilon = 10**(-5)
+maxn = 0
+
+while maxn<100:
+    gk = gfun(theta)
+    dk = -gk
+    [theta,mk] = Armijo(theta,dk)
+    if np.linalg.norm(gk)<epsilon:
+        break
+    maxn += 1
+    print('第%s次迭代，梯度范数：'%maxn,np.linalg.norm(gfun(theta)),'极小点是：',theta,'函数值：',fun(theta))
+
+#模型评价
+TP=0; FP=0; FN=0; TN=0
+for i in range(m):
+    if X[i]@theta <0:
+        if y[i] == 0:
+            TP += 1
+        else:
+            FP +=1
+    else:
+        if y[i] == 0:
+            FN += 1
+        else:
+            TN +=1
+P = TP/(TP+FP)
+print('模型对标签0的精准率为：',P)
+R = TP/(TP+FN)
+print('模型对标签0的召回率为：',R)
+F1Score = 2*P*R/(P+R)
+print('模型对标签0的F1-Score为：',F1Score)
+#标签为1的
+TP=0; FP=0; FN=0; TN=0
+for i in range(m):
+    if X[i]@theta >0:
+        if y[i] == 1:
+            TP += 1
+        else:
+            FP +=1
+    else:
+        if y[i] == 1:
+            FN += 1
+        else:
+            TN +=1
+P = TP/(TP+FP)
+print('模型对标签1的精准率为：',P)
+R = TP/(TP+FN)
+print('模型对标签1的召回率为：',R)
+F1Score = 2*P*R/(P+R)
+print('模型对标签1的F1-Score为：',F1Score)
